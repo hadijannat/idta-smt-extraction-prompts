@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use these prompts, please cite them as below."
+title: "idta-smt-extraction-prompts"
+abstract: >-
+  Five SHA-pinned LLM prompts (v0–v4) for schema-aware constraint
+  extraction from IDTA Submodel Template PDFs. Each version adds
+  exactly one design feature on top of the previous (layout-aware
+  reading, bounded template node graph, honesty contract, few-shot
+  examples), making the v0→v4 series a controlled single-axis
+  ablation. The prompts emit JSON arrays of typed constraint
+  records with calibrated abstention via a closed status
+  vocabulary. Headline F1 on IDTA 02006 Digital Nameplate v3.0.1
+  with qwen2.5:7b-instruct at temperature 0.0: v2 F1=0.481 at
+  precision 0.905, v3 precision 1.000 at F1=0.474. Within-prompt-
+  SHA stability rate 1.000 across K=5 runs.
+type: software
+authors:
+  - family-names: "Khori Jannatabadi"
+    given-names: "Mohammad Hadi"
+    email: "h.jannatabadi@iat.rwth-aachen.de"
+    affiliation: "Chair of Information and Automation Systems, RWTH Aachen University"
+version: 0.1.0
+date-released: "2026-05-11"
+license: MIT
+repository-code: "https://github.com/hadijannat/idta-smt-extraction-prompts"
+keywords:
+  - "Asset Administration Shell"
+  - "AAS"
+  - "Industrial Digital Twin Association"
+  - "IDTA"
+  - "Submodel Template"
+  - "constraint extraction"
+  - "prompt engineering"
+  - "large language model"
+  - "verifier-first"
+  - "Digital Product Passport"
+  - "Industry 4.0"

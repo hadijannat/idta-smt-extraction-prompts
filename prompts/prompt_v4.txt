@@ -1,0 +1,292 @@
+# {template_id} v{template_version} SMT constraint extraction — prompt v4
+
+You are extracting structural constraints from the Asset Administration Shell
+Submodel Template specification {template_id} {template_name} v{template_version}.
+
+This is the few-shot calibrated prompt. It keeps the v3 honesty contract but
+adds examples of the exact output shape expected by the schema. It is a
+schema-stable calibrated prompt, not a "maximum extraction count" prompt: a
+smaller set of correctly cited atomic records is better than a larger set with
+fabricated evidence IDs.
+
+FIELD AND ATOMICITY CONTRACT
+
+- field_idShort is required and non-empty.
+- aas_path is required and must exactly match a TEMPLATE NODE GRAPH aas_path.
+- For list children, use the full path with "*", e.g.
+  /{root_idshort}/Markings/*/MarkingName.
+- Do not output field_idShort=null.
+- Emit one atomic constraint per record.
+- Never combine value type and cardinality in the same constraint_value.
+- Convert aliases before output:
+  MLP -> MultiLanguageProperty; SMC -> SubmodelElementCollection;
+  SML -> SubmodelElementList; String -> xs:string.
+- semantic_identity must be an IRI or IRDI literally present in the evidence.
+
+CLASS-SPECIFIC VALUE RULES
+
+- File, Property, MultiLanguageProperty, SubmodelElementCollection, and
+  SubmodelElementList are sme_type values. They are never value_type values.
+- value_type values must be XML Schema datatypes such as xs:string,
+  xs:anyURI, xs:date, xs:boolean.
+- cardinality values must be strings such as "1", "0..1", "0..*", "1..*".
+- Copy bracketed cardinality exactly: [0..1] means "0..1", not "1".
+- If a compact row has no bracketed cardinality, do not infer cardinality "1".
+- ambiguous and structural_containment records may use an object as
+  constraint_value. Other classes should use a string unless the source rule
+  genuinely requires a structured value.
+
+COMPACT TABLE-LIKE BLOCKS
+
+Some evidence blocks compress table rows into fragments like:
+  +CompanyLogo : File [0..1]
+  +ManufacturerProductRoot : MLP [0..1]
+  +DateOfManufacture : xs:date [0..1]
+
+Read these as compact rows:
+- the text before ":" is the field idShort;
+- File, MLP, SMC, SML, Property after ":" are sme_type values;
+- xs:* after ":" is a value_type;
+- the bracketed part such as [0..1] is a separate cardinality value.
+- copy the bracket contents exactly: [0..1] -> "0..1"; [0..*] -> "0..*".
+- absence of a bracket is not evidence for cardinality "1".
+- REQUIRED: when a compact row contains a bracket, emit a separate
+  cardinality record for that same field. Do not skip the cardinality just
+  because you already emitted an sme_type or value_type record.
+- A compact row with "MLP [0..1]" therefore yields TWO atomic records:
+  sme_type = "MultiLanguageProperty" and cardinality = "0..1".
+- A compact row with "xs:string [0..1]" therefore yields TWO atomic records:
+  value_type = "xs:string" and cardinality = "0..1".
+
+Never emit "File [0..1]", "MLP [0..1]", "SMC [0..1]", or
+"xs:string [0..1]" as one constraint_value.
+
+METADATA / SEMANTIC BLOCKS
+
+Blocks such as "idShort:", "Class:", "semanticId:", and "Parent:" describe
+the current element. They are not field names. Use nearby metadata and the
+TEMPLATE NODE GRAPH to attach the constraint to the real graph node.
+
+- "Class: Submodel" for {root_idshort} becomes sme_type for /Nameplate.
+- "semanticId: <IRI or IRDI>" becomes semantic_identity for the current node.
+- "Parent: {root_idshort}" for Markings becomes structural_containment with
+  parent_path="/Nameplate" and child_path="/{root_idshort}/Markings".
+- Do not emit field_idShort values such as "Class", "semanticId", or "Parent".
+
+FORMAT / EXTERNAL STANDARD NOTES
+
+If a note says a value must follow an external standard, emit a format record
+with constraint_value = {"description": "..."} and
+formalization_status = "requires_external_resolution". Example: ISO 3166-1
+alpha-2 country codes for CountryOfOrigin.
+
+EVIDENCE CITATION CONTRACT
+
+- evidence_ids must contain at least one ID copied character-for-character
+  from the current EVIDENCE BLOCKS.
+- A one-character evidence_id typo makes the record invalid.
+- Do not synthesize evidence IDs from page numbers, graph paths, headings, or
+  memory. IDs such as smt{idta_number}_p019_b005 are invalid unless that exact string
+  appears in the EVIDENCE BLOCKS below.
+- In this bounded {template_id} run, valid evidence IDs come from the resolved
+  evidence scope below. If an ID is not visible in EVIDENCE BLOCKS, do not use
+  it, even if it looks plausible.
+- For compact rows from the {root_idshort} diagram, cite the compact evidence block
+  that contains those rows, for example smt{idta_number}_p008_b006 when that exact
+  block is present in the input.
+- Do not cite a heading-only block for a row-level constraint. For example,
+  a block whose text is only "{root_idshort}" scopes the following rows but does
+  not support value_type, sme_type, or cardinality records for those rows.
+  For records extracted from smt{idta_number}_p008_b006, cite smt{idta_number}_p008_b006,
+  not the preceding heading block smt{idta_number}_p008_b005.
+- Worked-example evidence_ids below show the expected shape. In your output,
+  do not reuse an example ID unless that exact ID appears in the current
+  EVIDENCE BLOCKS and supports the record.
+- Never output "evidence_ids": [].
+- If you can identify a likely constraint but cannot cite the supporting
+  evidence block exactly, omit the constraint.
+
+HONESTY CONTRACT
+
+exact means literal and unambiguous. approximate means clear but encoded with
+some loss. ambiguous means multiple readings or insufficient context.
+prose_only means real prose rule with no supported formal counterpart.
+requires_external_resolution means the rule depends on an out-of-scope
+standard or dictionary.
+
+For unambiguous table cells such as valueType "xs:string" or cardinality
+"0..1", exact remains the correct status. Do not mark clear table values
+ambiguous merely because they lack an inline modal verb.
+
+OUTPUT FORMAT
+
+Your response must begin immediately with "[" and end immediately with "]".
+Anything before "[" or after "]" is invalid output. Do not introduce the
+response with phrases like "Here is the JSON".
+
+Each object:
+
+{
+  "field_idShort":        string, non-empty,
+  "aas_path":             string, must match the graph,
+  "constraint_class":     one of {cardinality, sme_type, semantic_identity,
+                                  value_type, structural_containment, naming,
+                                  language_rule, conditional,
+                                  recommendation_vs_hard, external_reference,
+                                  allowed_values, format, ambiguous},
+  "constraint_value":     string or object, depending on constraint_class,
+  "normativity":          one of {hard_rule, recommendation, example, informative},
+  "evidence_ids":         array of input evidence_id strings, non-empty,
+  "formalization_status": one of {exact, approximate, ambiguous, prose_only,
+                                  requires_external_resolution}
+}
+
+WORKED EXAMPLES
+
+Example 1 - exact value type:
+{
+  "field_idShort": "URIOfTheProduct",
+  "aas_path": "/{root_idshort}/URIOfTheProduct",
+  "constraint_class": "value_type",
+  "constraint_value": "xs:anyURI",
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p008_b006"],
+  "formalization_status": "exact"
+}
+
+Example 2 - exact sme_type with alias expanded:
+{
+  "field_idShort": "ManufacturerName",
+  "aas_path": "/{root_idshort}/ManufacturerName",
+  "constraint_class": "sme_type",
+  "constraint_value": "MultiLanguageProperty",
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p008_b006"],
+  "formalization_status": "exact"
+}
+
+Example 3 - split combined type/cardinality into atomic records:
+[
+  {
+    "field_idShort": "ManufacturerProductRoot",
+    "aas_path": "/{root_idshort}/ManufacturerProductRoot",
+    "constraint_class": "sme_type",
+    "constraint_value": "MultiLanguageProperty",
+    "normativity": "hard_rule",
+    "evidence_ids": ["smt{idta_number}_p008_b006"],
+    "formalization_status": "exact"
+  },
+  {
+    "field_idShort": "ManufacturerProductRoot",
+    "aas_path": "/{root_idshort}/ManufacturerProductRoot",
+    "constraint_class": "cardinality",
+    "constraint_value": "0..1",
+    "normativity": "hard_rule",
+    "evidence_ids": ["smt{idta_number}_p008_b006"],
+    "formalization_status": "exact"
+  }
+]
+
+Example 4 - File node: File is sme_type and [0..1] is cardinality:
+[
+  {
+    "field_idShort": "CompanyLogo",
+    "aas_path": "/{root_idshort}/CompanyLogo",
+    "constraint_class": "sme_type",
+    "constraint_value": "File",
+    "normativity": "hard_rule",
+    "evidence_ids": ["smt{idta_number}_p008_b006"],
+    "formalization_status": "exact"
+  },
+  {
+    "field_idShort": "CompanyLogo",
+    "aas_path": "/{root_idshort}/CompanyLogo",
+    "constraint_class": "cardinality",
+    "constraint_value": "0..1",
+    "normativity": "hard_rule",
+    "evidence_ids": ["smt{idta_number}_p008_b006"],
+    "formalization_status": "exact"
+  }
+]
+
+Example 5 - list prototype child:
+{
+  "field_idShort": "MarkingName",
+  "aas_path": "/{root_idshort}/Markings/*/MarkingName",
+  "constraint_class": "value_type",
+  "constraint_value": "xs:string",
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p012_b006"],
+  "formalization_status": "exact"
+}
+
+Example 6 - external semantic dependency (recommendation because the source
+allows alternate enumeration sources):
+{
+  "field_idShort": "MarkingName",
+  "aas_path": "/{root_idshort}/Markings/*/MarkingName",
+  "constraint_class": "external_reference",
+  "constraint_value": "IEC CDD or ECLASS enumeration value list",
+  "normativity": "recommendation",
+  "evidence_ids": ["smt{idta_number}_p014_b016"],
+  "formalization_status": "requires_external_resolution"
+}
+
+Example 7 - semantic identity from metadata:
+{
+  "field_idShort": "{root_idshort}",
+  "aas_path": "/{root_idshort}",
+  "constraint_class": "semantic_identity",
+  "constraint_value": "https://admin-shell.io/idta/nameplate/3/0/Nameplate",
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p008_b021"],
+  "formalization_status": "exact"
+}
+
+Example 8 - structural containment from Parent metadata:
+{
+  "field_idShort": "Markings",
+  "aas_path": "/{root_idshort}/Markings",
+  "constraint_class": "structural_containment",
+  "constraint_value": {
+    "parent_path": "/{root_idshort}",
+    "child_path": "/{root_idshort}/Markings"
+  },
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p012_b015"],
+  "formalization_status": "exact"
+}
+
+Example 9 - format rule requiring an external standard:
+{
+  "field_idShort": "CountryOfOrigin",
+  "aas_path": "/{root_idshort}/CountryOfOrigin",
+  "constraint_class": "format",
+  "constraint_value": {
+    "description": "country code according to DIN EN ISO 3166-1 alpha-2"
+  },
+  "normativity": "hard_rule",
+  "evidence_ids": ["smt{idta_number}_p010_b063"],
+  "formalization_status": "requires_external_resolution"
+}
+
+FINAL SELF-CHECK BEFORE OUTPUT
+
+For every record, verify:
+
+1. aas_path exactly exists in TEMPLATE NODE GRAPH.
+2. field_idShort is consistent with that graph node.
+3. evidence_ids exist in the current EVIDENCE BLOCKS.
+4. constraint_class matches the source column or prose rule.
+5. constraint_value is valid for that class.
+6. File/Property/MLP/SMC/SML are never emitted as value_type.
+7. Cardinality is not embedded in another value.
+8. No record has evidence_ids=[]; if evidence is missing, remove the record.
+9. Every compact row with [0..1], [0..*], [1], or [1..*] has a separate
+   cardinality record.
+
+TEMPLATE NODE GRAPH:
+{node_graph_json}
+
+EVIDENCE BLOCKS:
+{blocks_json}

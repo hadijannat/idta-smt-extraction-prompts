@@ -1,0 +1,129 @@
+# {template_id} v{template_version} SMT constraint extraction — prompt v2
+
+You are extracting structural constraints from the Asset Administration Shell
+Submodel Template specification {template_id} {template_name} v{template_version}.
+
+NEW IN v2: closed-world field resolution against the TEMPLATE NODE GRAPH.
+
+You are given two inputs:
+
+1. TEMPLATE NODE GRAPH: the authoritative closed-world list of fields that
+   exist in {template_id} v{template_version}. Each entry has template_node_id, aas_path,
+   idShort, sme_type, and is_list_prototype.
+2. EVIDENCE BLOCKS from the SMT PDF, with evidence_id, page, kind, and text.
+
+CLOSED-WORLD FIELD RULE
+
+Every emitted constraint must refer to exactly one node in the TEMPLATE NODE
+GRAPH.
+
+- field_idShort is required and must be non-empty.
+- aas_path is required and must exactly match a graph aas_path.
+- For normal named nodes, copy the graph idShort exactly into field_idShort.
+- For list prototype children, use the child idShort and the full path with
+  the "*" segment, for example:
+  field_idShort = "MarkingName"
+  aas_path = "/{root_idshort}/Markings/*/MarkingName"
+- Do not output field_idShort=null. Do not output field_idShort="".
+- Match graph paths, idShort spelling, casing, and punctuation exactly. If the
+  source text says "manufacturer name" but the graph node is
+  "ManufacturerName", copy the graph's exact idShort and aas_path.
+- Do not emit ordinary constraints for a field absent from the graph. If the
+  source names an absent field, emit one ambiguous discrepancy record:
+  constraint_class = "ambiguous"
+  constraint_value = {
+    "reason": "field_referenced_in_source_but_absent_from_template_graph",
+    "absent_field_name": "<field name from the source>",
+    "source_quote": "<short quote from the cited evidence>"
+  }
+  aas_path should be a graph path only when a matching graph node exists.
+
+OUTPUT FORMAT
+
+Output a JSON array. No prose. No markdown fences.
+
+{
+  "field_idShort":        string, non-empty,
+  "aas_path":             string, must match the graph,
+  "constraint_class":     one of {cardinality, sme_type, semantic_identity,
+                                  value_type, structural_containment, naming,
+                                  language_rule, conditional,
+                                  recommendation_vs_hard, external_reference,
+                                  allowed_values, format, ambiguous},
+  "constraint_value":     string or object, depending on constraint_class,
+  "normativity":          one of {hard_rule, recommendation, example, informative},
+  "evidence_ids":         array of input evidence_id strings, non-empty,
+  "formalization_status": one of {exact, approximate, ambiguous, prose_only,
+                                  requires_external_resolution}
+}
+
+ATOMIC FORMALIZATION RULES
+
+1. Emit one record per atomic constraint. Never combine type and cardinality.
+   Wrong: value_type = "xs:string [0..1]"
+   Right: value_type = "xs:string"; cardinality = "0..1" in a separate record.
+2. For sme_type, use only graph/AAS class names:
+   Property, MultiLanguageProperty, File, SubmodelElementCollection,
+   SubmodelElementList, Range, Blob, ReferenceElement, RelationshipElement,
+   Entity, AnnotatedRelationshipElement, BasicEventElement, Operation,
+   Capability.
+3. Convert aliases before output:
+   MLP -> MultiLanguageProperty; SMC -> SubmodelElementCollection;
+   SML -> SubmodelElementList.
+4. For value_type, use only:
+   xs:string, xs:boolean, xs:int, xs:integer, xs:long, xs:double, xs:float,
+   xs:date, xs:dateTime, xs:gYear, xs:gYearMonth, xs:anyURI, xs:base64Binary.
+5. For cardinality, use strings like "1", "0..1", "0..*".
+6. For semantic_identity, output only an IRI or IRDI literally present in the
+   evidence. Descriptions are not semantic identities.
+7. structural_containment values must be objects:
+   {"parent_path": "/{root_idshort}/Markings", "child_path": "/{root_idshort}/Markings/*/MarkingName"}
+
+COMPACT UML / TABLE-LIKE BLOCK RULES
+
+Some evidence blocks contain many compact UML rows inside ONE block, for
+example:
+
+  +ManufacturerProductRoot : MLP [0..1]
+  +CompanyLogo : File [0..1]
+  +Markings : SML [0..1]
+
+For this pattern:
+
+1. The evidence_id belongs to the whole block. Every record derived from any
+   line inside that block must cite that same evidence_id. Do not invent
+   neighboring block IDs for individual lines.
+2. The text before ":" is the source idShort after removing "+".
+3. MLP, SMC, SML, File, and Property after ":" are sme_type values.
+4. xs:* values after ":" are value_type values.
+5. Bracketed values such as [0..1] or [0..*] are cardinality values. Copy the
+   inside of the brackets exactly: [0..1] -> "0..1", not "1".
+6. If a compact row has no bracketed cardinality, do not infer cardinality "1".
+
+METADATA LABEL RULE
+
+Labels such as "idShort:", "Class:", "semanticId:", "Parent:", and
+"Explanation:" describe the current element. They are not field names. Never
+emit field_idShort values such as "Class", "semanticId", "Parent", or
+"Explanation".
+
+NORMATIVITY
+
+"shall"/"must" = hard_rule; "should"/"recommended" = recommendation;
+"e.g."/"for example" = example. "may" is informative when it describes a
+possibility; when it grants an allowed alternative, prefer recommendation.
+
+Never output recommendation_vs_hard as normativity. recommendation_vs_hard is
+a constraint_class value only. The normativity field must be one of:
+hard_rule, recommendation, example, informative.
+
+RESPONSE FORMAT
+
+Your response must begin immediately with "[" and end immediately with "]".
+Anything before "[" or after "]" is invalid output. Output only the array.
+
+TEMPLATE NODE GRAPH:
+{node_graph_json}
+
+EVIDENCE BLOCKS:
+{blocks_json}

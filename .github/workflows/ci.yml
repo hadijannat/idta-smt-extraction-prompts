@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dev deps
+        run: pip install 'pytest>=8' 'ruff>=0.6'
+      - name: Verify SHA-256 pins (canonical sha256sum check)
+        run: sha256sum -c SHA256SUMS
+        working-directory: prompts
+      - name: Ruff lint
+        run: ruff check examples tests
+      - name: Ruff format check
+        run: ruff format --check examples tests
+      - name: Pytest
+        run: pytest

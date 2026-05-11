@@ -1,0 +1,128 @@
+# {template_id} v{template_version} SMT constraint extraction — prompt v1
+
+You are extracting structural constraints from the Asset Administration Shell
+Submodel Template specification {template_id} {template_name} v{template_version}.
+
+NEW IN v1: layout-aware reading discipline and stricter evidence citation.
+
+INPUT: a list of evidence blocks. Each block has:
+  - evidence_id: a stable identifier you must cite
+  - page:        the human-readable page number
+  - kind:        one of "pdf_table_block", "pdf_paragraph", "pdf_heading"
+  - text:        the block's text
+
+HOW TO READ EACH KIND
+
+- pdf_table_block:
+  These are the normative core of the specification. A row or compact block may
+  contain idShort, SubmodelElement type, valueType, semanticId, cardinality,
+  and description. Emit one record per constraint-bearing column. Split combined
+  cells such as "xs:string [0..1]" into separate value_type and cardinality
+  records.
+
+- pdf_heading:
+  Headings establish scope and parent context. They rarely produce constraints
+  by themselves.
+
+- pdf_paragraph:
+  Prose may state hard rules ("shall", "must"), recommendations ("should"),
+  examples ("e.g.", "for example"), or non-normative commentary.
+  If a paragraph is visibly compact table-like text, such as repeated
+  separators, pipe characters, or aligned column fragments, read it like a
+  table row rather than free prose.
+
+COMPACT UML / TABLE-LIKE BLOCK RULES
+
+Some PyMuPDF paragraph blocks contain many compact UML lines inside ONE
+evidence block, for example:
+
+  +ManufacturerProductRoot : MLP [0..1]
+  +CompanyLogo : File [0..1]
+  +Markings : SML [0..1]
+
+For this pattern:
+
+1. The evidence_id belongs to the whole block. Every record derived from any
+   line in that block must cite that same evidence_id. Never invent nearby
+   block IDs such as "_b020", "_b021", etc. to represent individual lines.
+2. The text before ":" is the field_idShort, after removing any leading "+".
+3. If the value after ":" is an AAS element alias:
+   - MLP -> sme_type = "MultiLanguageProperty"
+   - SMC -> sme_type = "SubmodelElementCollection"
+   - SML -> sme_type = "SubmodelElementList"
+   - File -> sme_type = "File"
+   Do not output these as value_type.
+4. If the value after ":" is an XML Schema datatype such as "xs:string" or
+   "xs:date", output value_type.
+5. If the line contains a bracketed cardinality such as "[0..1]" or "[0..*]",
+   emit a separate cardinality record with the bracket contents only.
+6. Therefore "MLP [0..1]" becomes two records:
+   sme_type = "MultiLanguageProperty" and cardinality = "0..1".
+   "xs:string [0..1]" becomes value_type = "xs:string" and cardinality = "0..1".
+
+METADATA LABEL RULE
+
+Labels such as "idShort:", "Class:", "semanticId:", "Parent:", and
+"Explanation:" are metadata about the current element. They are not field
+names. Never output field_idShort values such as "Class", "semanticId",
+"Parent", or "Explanation". If the current element cannot be identified from
+nearby text, skip the metadata constraint rather than inventing a field.
+
+OUTPUT FORMAT
+
+Output a JSON array of constraint records. Each record:
+{
+  "field_idShort":        string, non-empty,
+  "constraint_class":     one of {cardinality, sme_type, semantic_identity,
+                                  value_type, structural_containment, naming,
+                                  language_rule, conditional,
+                                  recommendation_vs_hard, external_reference,
+                                  allowed_values, format, ambiguous},
+  "constraint_value":     string or object, depending on constraint_class,
+  "normativity":          one of {hard_rule, recommendation, example, informative},
+  "evidence_ids":         array of strings, non-empty, each from the input,
+  "formalization_status": one of {exact, approximate, ambiguous, prose_only,
+                                  requires_external_resolution}
+}
+
+CANONICAL VALUE RULES
+
+1. Atomic records only. Never combine two constraints in one value.
+   - "xs:string [0..1]" becomes:
+     value_type = "xs:string"
+     cardinality = "0..1"
+2. Canonical SubmodelElement types only:
+   Property, MultiLanguageProperty, File, SubmodelElementCollection,
+   SubmodelElementList, Range, Blob, ReferenceElement, RelationshipElement,
+   Entity, AnnotatedRelationshipElement, BasicEventElement, Operation,
+   Capability.
+3. Canonical value types only:
+   xs:string, xs:boolean, xs:int, xs:integer, xs:long, xs:double, xs:float,
+   xs:date, xs:dateTime, xs:gYear, xs:gYearMonth, xs:anyURI, xs:base64Binary.
+4. Convert aliases before output:
+   MLP -> MultiLanguageProperty; SMC -> SubmodelElementCollection;
+   SML -> SubmodelElementList; String -> xs:string.
+5. semantic_identity must be an IRI or IRDI literally present in the evidence.
+   If the source gives only a description, do not emit semantic_identity.
+
+HARD RULES
+
+1. Every record must cite at least one evidence_id that appears in the input.
+   If you cannot point to a specific block, do not emit the record.
+2. Modal verbs map to normativity: "shall"/"must" = hard_rule;
+   "should"/"recommended" = recommendation; "e.g."/"for example" = example.
+   "may" is informative when it describes a possibility; when it grants an
+   allowed alternative, prefer recommendation.
+   Never output recommendation_vs_hard as normativity. recommendation_vs_hard
+   is a constraint_class value only.
+3. If a block is genuinely unclear, emit constraint_class="ambiguous" and
+   formalization_status="ambiguous". Do not invent structure to resolve it.
+
+RESPONSE FORMAT
+
+Your response must begin immediately with "[" and end immediately with "]".
+Anything before "[" or after "]" is invalid output. Do not introduce the
+response with phrases like "Here is the JSON". Output only the array.
+
+Evidence blocks:
+{blocks_json}
